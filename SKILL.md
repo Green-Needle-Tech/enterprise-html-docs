@@ -23,7 +23,7 @@ description: "Use when creating styled enterprise HTML docs for David."
   - `PROJECT` = project short-form name (e.g. GE)
   - `YYYY-MMDD` = document date
   - `NN` = zero-padded sequence number, counted per document type + project combination (01, 02, ...)
-- **Filename = Document ID** — the file must be named exactly after its Document ID, e.g. `DOC-CR-GE-2026-0828-01.html` (or `.pdf`/`.docx` matching the format). Do not use descriptive filenames.
+- **Filename = Document ID + version suffix** — the file must be named `<DocumentID>-v<major>_<minor>_<patch>.<ext>`, e.g. `DOC-CR-GE-2026-0828-01-v1_0_0.html` (or `.pdf`/`.docx` matching the format). Do not use descriptive filenames. The version suffix uses underscores (e.g. `v1_0_1`) to stay filesystem-safe on all platforms.
 - **Save location:** all enterprise documents go to `/root/enterprise-document/` (create the directory if missing).
 
 ## Client-Facing Billing & CR Documents
@@ -137,11 +137,11 @@ David mandates that flowcharts, architecture diagrams, and sequence diagrams in 
 
 David follows strict SemVer-style versioning for HTML documents:
 
-| Change Type | Version Bump | File Action | Example |
+| Change Type | Version Bump | File Action | Example Filename |
 |---|---|---|---|
-| Major restructure / role model change | Major (v1→v2) | New file | `v2_0_0.html` |
-| New section, lifecycle variant, glossary | Minor (v1.5→v1.6) | **New file**, preserve previous | `v1_6_0.html` |
-| Typo fix, table correction, CSS tweak | Patch (v1.6.0→v1.6.1) | **Rename** existing file | `v1_6_1.html` |
+| Major restructure / role model change | Major (v1→v2) | New file | `DOC-CR-GE-2026-0828-01-v2_0_0.html` |
+| New section, lifecycle variant, glossary | Minor (v1.5→v1.6) | **New file**, preserve previous | `DOC-CR-GE-2026-0828-01-v1_6_0.html` |
+| Typo fix, table correction, CSS tweak | Patch (v1.6.0→v1.6.1) | **Rename** existing file | `DOC-CR-GE-2026-0828-01-v1_6_1.html` |
 
 - **Rules:**
   - ALL previous versions preserved on disk — never delete or overwrite
