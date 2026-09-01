@@ -24,7 +24,7 @@ description: "Use when creating styled enterprise HTML docs for David."
   - `YYYY-MMDD` = document date
   - `NN` = zero-padded sequence number, counted per document type + project combination (01, 02, ...)
 - **Filename = Document ID + version suffix** — the file must be named `<DocumentID>-v<major>_<minor>_<patch>.<ext>`, e.g. `DOC-CR-GE-2026-0828-01-v1_0_0.html` (or `.pdf`/`.docx` matching the format). Do not use descriptive filenames. The version suffix uses underscores (e.g. `v1_0_1`) to stay filesystem-safe on all platforms.
-- **Save location:** all enterprise documents go to `/root/enterprise-document/` (create the directory if missing).
+- **Save location:** all enterprise documents go to `/root/enterprise-document/<PROJECT>/` — a subfolder named after the `PROJECT` field from the Document ID (create the directory if missing). Example: `DOC-RES-SMARTROUTER-2026-0829-01-v1_0_0.html` is saved to `/root/enterprise-document/SMARTROUTER/`. The base `/root/enterprise-document/` directory should also be created if missing.
 
 ## Client-Facing Billing & CR Documents
 
