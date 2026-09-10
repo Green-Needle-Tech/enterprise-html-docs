@@ -241,13 +241,15 @@ David runs HTML locally via `file://` URLs on Windows. The HTML must be fully se
 
 Before delivering any HTML version:
 1. **Tag balance:** Run HTML parser, confirm zero unclosed tags and zero mismatches
-2. **Self-contained:** `grep -oE 'https?://[^"]*' file.html` — only `http://www.w3.org/2000/svg` should appear
+2. **Self-contained (dependencies only):** Scan for external CSS/JS/font dependencies — `grep` for `<link`, `<script src=`, `@import`, `fonts.googleapis`. These must NOT appear. Citation hyperlinks in the references section (e.g. `<a href="https://developer.apple.com/...">`) are allowed — the check targets *render dependencies*, not *citation links*. The only non-citation external URL should be `http://www.w3.org/2000/svg`.
 3. **Version markers:** Title tag, meta footer, and version history table all show the new version
 4. **Section count:** Count `<h2>` tags — matches expected section count
 5. **Content integrity:** Key phrases from prior version still present (no accidental content loss)
-6. **No placeholder text:** Search for `PLACEHOLDER`, `TODO`, `XXX` — none should remain
+6. **No placeholder text:** Search for `PLACEHOLDER`, `TODO`, `XXX` — none should remain (the `PLACEHOLDER_B64` logo marker must have been replaced)
 7. **File size:** Note the size (base64 logo adds ~48 KB)
 8. **Approval & Sign-Off table:** Confirm the `#approval-signoff` section exists with the correct approver roles for the document TYPE (per the mapping in the Approval & Sign-Off Footer section). Each row must have all 5 columns (Role, Name, Signature, Remarks, Date) with Name/Signature/Remarks/Date left blank.
+9. **Batch verification:** Run all checks above in a single `execute_code` script — HTMLParser tag-balance pass, regex URL scan, `re.findall` for placeholders, section/reference/logo counts, a grep for `Iris-SPM`, and an **author-attribution resolved check** (grep for placeholder tokens like `AUTHOR_NAME`, `{{author}}`, `TBD`, or an empty `Prepared By` field — the author name must be a concrete resolved value, not a placeholder). Raise on any mismatch. This catches issues a visual pass misses and is faster than running each check separately.
+10. **Browser render:** After the script checks pass, render in a real browser (Playwright headless Chromium via `execute_code` if `browser_exec` is unavailable) at 1280px viewport, take a full-page screenshot, and feed to `vision_analyze` for layout/contrast/clipping inspection. Do not claim verification unless a real render completed.
 
 ## Pitfalls
 
@@ -262,3 +264,5 @@ Before delivering any HTML version:
 5. **Copying from wrong source** — when restoring a prior version (e.g., 24-week from 8-week), always copy from the original cached file (`doc_XXXXXXXX_*.html`), not from a derived version that may have accumulated changes.
 
 6. **Icon stripping leaves `</svg>` orphans** — after regex-stripping `<svg class="icon">...</svg>` from headings, check for and clean any leftover `</svg>` tags at the start of heading text: `re.sub(r'(<h[23][^>]*>)\s*</svg>\s*', r'\1', content)`.
+
+7. **Self-contained URL check false positive on citation links** — the old check `grep -oE 'https?://[^"]*' file.html` flags legitimate reference hyperlinks (e.g. `<a href="https://developer.apple.com/...">`) as violations. Scan for *render dependencies* (`<link`, `<script src=`, `@import`, Google Fonts URLs) instead of all HTTP URLs. Citation links in the references section are allowed.
