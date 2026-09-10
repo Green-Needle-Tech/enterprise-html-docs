@@ -16,7 +16,7 @@ description: "Use when creating styled enterprise HTML docs for David."
 ## Naming & Attribution Rules (MANDATORY)
 
 - **Never mention "Iris-SPM"** anywhere in a generated document — no references, examples, code samples, or metadata.
-- **Every document must mention "Liew Wei Sung"** — include as author/attribution in the header metadata block or footer.
+- **Author/attribution is dynamic** — determine the author name from the Hermes agent user profile (e.g. the `user` memory store) or from what the user explicitly states. Include that name as author/attribution in the header metadata block or footer. If no name is available, ask the user before generating the document.
 - **Document ID format (mandatory on every enterprise document):** `DOC-<TYPE>-<PROJECT>-YYYY-MMDD-NN`
   - Example: `DOC-CR-GE-2026-0828-01`
   - `TYPE` = document type code (e.g. CR = Change Request)
@@ -31,7 +31,7 @@ description: "Use when creating styled enterprise HTML docs for David."
 For Change Requests, effort statements, and other billing-purpose documents:
 
 - **Final figures only.** State billable hours/days directly. Do NOT include the derivation method — no allocation factors (e.g. "x 1/3"), no full/internal estimates, no before/after comparison columns. Internal math stays in chat reasoning; the deliverable shows only what the client is invoiced for. (David iteratively stripped these from the v1.0.0 CR — treat it as the template.)
-- **Attribution:** Prepared By = "Liew Wei Sung" — never an agent name (see Naming & Attribution Rules).
+- **Attribution:** Prepared By = the author name resolved from the Hermes agent user profile or as stated by the user — never an agent name (see Naming & Attribution Rules).
 - **Same-version iterative edits:** content changes requested immediately after generation, before the doc is treated as final, keep the current version number — do not bump. Bump only when the user asks or the doc is re-delivered as a distinct iteration.
 - **Structure that works:** CR overview (ID/type/project/status/source doc) → background & justification → requested change → billable breakdown → rationale → financial summary → approval sign-off block → glossary → version history.
 
