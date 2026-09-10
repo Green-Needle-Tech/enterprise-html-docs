@@ -1,6 +1,6 @@
 ---
 name: enterprise-html-docs
-description: "Use when creating styled enterprise HTML docs for David."
+description: "Use when creating styled enterprise HTML documents."
 ---
 
 # Enterprise HTML Documents
@@ -11,7 +11,7 @@ description: "Use when creating styled enterprise HTML docs for David."
 - Iterating on an existing HTML doc (adding sections, changing lifecycle, restyling)
 - Adding GNT logo, Lucide icons, or Notion-style design to an HTML doc
 - Generating print-friendly HTML + PDF from an existing HTML doc
-- Any time David sends an HTML file and asks for modifications
+- Any time the user sends an HTML file and asks for modifications
 
 ## Naming & Attribution Rules (MANDATORY)
 
@@ -30,7 +30,7 @@ description: "Use when creating styled enterprise HTML docs for David."
 
 For Change Requests, effort statements, and other billing-purpose documents:
 
-- **Final figures only.** State billable hours/days directly. Do NOT include the derivation method — no allocation factors (e.g. "x 1/3"), no full/internal estimates, no before/after comparison columns. Internal math stays in chat reasoning; the deliverable shows only what the client is invoiced for. (David iteratively stripped these from the v1.0.0 CR — treat it as the template.)
+- **Final figures only.** State billable hours/days directly. Do NOT include the derivation method — no allocation factors (e.g. "x 1/3"), no full/internal estimates, no before/after comparison columns. Internal math stays in chat reasoning; the deliverable shows only what the client is invoiced for. (These were iteratively stripped from the v1.0.0 CR — treat it as the template.)
 - **Attribution:** Prepared By = the author name resolved from the Hermes agent user profile or as stated by the user — never an agent name (see Naming & Attribution Rules).
 - **Same-version iterative edits:** content changes requested immediately after generation, before the doc is treated as final, keep the current version number — do not bump. Bump only when the user asks or the doc is re-delivered as a distinct iteration.
 - **Structure that works:** CR overview (ID/type/project/status/source doc) → background & justification → requested change → billable breakdown → rationale → financial summary → approval sign-off block → glossary → version history.
@@ -94,7 +94,7 @@ The approver roles included depend on the **document type** (from the `TYPE` fie
 
 ## Design System (Notion-Style Light Mode)
 
-David's standard for enterprise HTML documents:
+Standard for enterprise HTML documents:
 
 | Token | Value | Usage |
 |---|---|---|
@@ -164,7 +164,7 @@ with open('/root/assets/GNT_logo_clean_lightmode.svg','rb') as f:
 # Inject into HTML: <img src="data:image/svg+xml;base64,{b64}" class="gnt-logo" />
 ```
 
-**Default sizing:** `height: 42px; max-width: 280px` (scale 1.5× to `63px / 420px` when David asks for "increase by 1.5×"). David has requested 1.5×, 2×, and custom CSS (700px width, negative margins) in different sessions — always apply the exact multiplier or CSS he specifies.
+**Default sizing:** `height: 42px; max-width: 280px` (scale 1.5× to `63px / 420px` when the user asks for "increase by 1.5×"). Requests may specify 1.5×, 2×, or custom CSS (700px width, negative margins) — always apply the exact multiplier or CSS stated.
 
 **Header layout:** Flexbox with logo left, metadata block right (title, version, date). Subtle bottom border separates header from H1.
 
@@ -172,7 +172,7 @@ with open('/root/assets/GNT_logo_clean_lightmode.svg','rb') as f:
 
 ## Diagrams: Mermaid.js Standard
 
-David mandates that flowcharts, architecture diagrams, and sequence diagrams in HTML documentation and reports use **Mermaid.js** (`<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>`) with responsive container styling (`.mermaid-wrapper { display: flex; justify-content: center; overflow-x: auto; }`).
+Flowcharts, architecture diagrams, and sequence diagrams in HTML documentation and reports must use **Mermaid.js** (`<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>`) with responsive container styling (`.mermaid-wrapper { display: flex; justify-content: center; overflow-x: auto; }`).
 
 ### Critical Mermaid Syntax Guardrails (Avoid "Syntax error in text")
 1. **Always quote node labels**: Enclose labels in double quotes, e.g. `A["Step 1: Go Build"] --> B{"Passed?"}`.
@@ -190,7 +190,7 @@ David mandates that flowcharts, architecture diagrams, and sequence diagrams in 
 
 ## Versioning Convention
 
-David follows strict SemVer-style versioning for HTML documents:
+Strict SemVer-style versioning applies to HTML documents:
 
 | Change Type | Version Bump | File Action | Example Filename |
 |---|---|---|---|
@@ -229,7 +229,7 @@ See `references/print-pipeline.md` for the full A4 @page CSS template and weasyp
 
 ## Self-Contained Requirements
 
-David runs HTML locally via `file://` URLs on Windows. The HTML must be fully self-contained:
+Documents run locally via `file://` URLs on Windows. The HTML must be fully self-contained:
 - **No external CSS** — all styles inline in `<style>` block
 - **No external JS** — any scripts must be inline
 - **No CDN fonts** — use system font stack, not Google Fonts `@import` or `<link>`

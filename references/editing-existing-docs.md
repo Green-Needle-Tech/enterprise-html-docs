@@ -20,4 +20,4 @@ Then verify: first line is `<!DOCTYPE html>`, no `\n\d+\|` regex hits, tag balan
 Note: hermes_tools `read_file` may return a metadata dict without a `content` key in sandboxed execute_code contexts — another reason to prefer plain `open()` there.
 
 ## Scope rule for removal requests
-David's "remove X" means literal scope only: delete exactly the named sections including their tables and callouts; no renumbering, restructuring, or version bump unless asked. (Example: removing "Compensation & Location", "What Success Looks Like", "Hiring Process" left a clean Nice to Have → Version History flow.)
+A "remove X" request means literal scope only: delete exactly the named sections including their tables and callouts; no renumbering, restructuring, or version bump unless asked. (Example: removing "Compensation & Location", "What Success Looks Like", "Hiring Process" left a clean Nice to Have → Version History flow.)
