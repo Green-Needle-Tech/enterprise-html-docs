@@ -170,9 +170,21 @@ with open('/root/assets/GNT_logo_clean_lightmode.svg','rb') as f:
 
 **File size impact:** Base64 logo adds ~48 KB to the HTML. Acceptable for self-contained docs.
 
-## Diagrams: Mermaid.js Standard
+## Diagrams: Mermaid.js Standard (Inline Embedding)
 
-Flowcharts, architecture diagrams, and sequence diagrams in HTML documentation and reports must use **Mermaid.js** (`<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>`) with responsive container styling (`.mermaid-wrapper { display: flex; justify-content: center; overflow-x: auto; }`).
+Flowcharts, architecture diagrams, and sequence diagrams in HTML documentation and reports must use **Mermaid.js** with responsive container styling (`.mermaid-wrapper { display: flex; justify-content: center; overflow-x: auto; }`).
+
+**Inline embedding is MANDATORY** — never load Mermaid from a CDN (`<script src=...>` violates Self-Contained Requirements and breaks offline `file://` use).
+
+**Embed procedure:**
+1. Source bundle: `/root/assets/mermaid.min.js` (mermaid@10, ~3.3 MB). If missing, download once: `curl -sL -o /root/assets/mermaid.min.js https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js`
+2. Inline it as `<script>` content via Python `str.replace()` with a placeholder marker (same pattern as the base64 logo — never paste 3.3 MB through the patch tool).
+3. Defensive escape: replace `</script` with `<\/script` in the bundle before inlining (mermaid@10 currently has zero occurrences, but other versions may not).
+4. Initialize AFTER the bundle script — use the `mermaid.initialize()` config from guardrail 4 below.
+
+**File size impact:** inline Mermaid adds ~3.4 MB to the HTML. Only embed when the document actually contains diagrams; skip entirely for diagram-free documents.
+
+**Verified (headless chromium, mermaid@10):** inline bundle renders flowcharts to SVG — `data-processed="true"`, `aria-roledescription="flowchart-v2"`, quoted node labels and `|label|` edge labels all render.
 
 ### Critical Mermaid Syntax Guardrails (Avoid "Syntax error in text")
 1. **Always quote node labels**: Enclose labels in double quotes, e.g. `A["Step 1: Go Build"] --> B{"Passed?"}`.
@@ -229,9 +241,10 @@ See `references/print-pipeline.md` for the full A4 @page CSS template and weasyp
 
 ## Self-Contained Requirements
 
-Documents run locally via `file://` URLs on Windows. The HTML must be fully self-contained:
+Documents run locally via `file://` URLs on Windows. The HTML must be fully self-contained — all JS, CSS, and content inline; no external files of any kind:
 - **No external CSS** — all styles inline in `<style>` block
-- **No external JS** — any scripts must be inline
+- **No external JS** — all scripts inline in `<script>` blocks, including the Mermaid.js library (embed the full bundle inline — see Diagrams section; never a CDN `<script src>`)
+- **No external HTML** — no `<iframe>`, `<object>`, or `<embed>`; the document is a single standalone `.html` file
 - **No CDN fonts** — use system font stack, not Google Fonts `@import` or `<link>`
 - **No external images** — embed as base64 data URIs (logos, icons)
 - **Exception:** SVG XML namespace `http://www.w3.org/2000/svg` is required and harmless
@@ -241,7 +254,7 @@ Documents run locally via `file://` URLs on Windows. The HTML must be fully self
 
 Before delivering any HTML version:
 1. **Tag balance:** Run HTML parser, confirm zero unclosed tags and zero mismatches
-2. **Self-contained (dependencies only):** Scan for external CSS/JS/font dependencies — `grep` for `<link`, `<script src=`, `@import`, `fonts.googleapis`. These must NOT appear. Citation hyperlinks in the references section (e.g. `<a href="https://developer.apple.com/...">`) are allowed — the check targets *render dependencies*, not *citation links*. The only non-citation external URL should be `http://www.w3.org/2000/svg`.
+2. **Self-contained (dependencies only):** Scan for external CSS/JS/font/HTML dependencies — `grep` for `<link`, `<script src=`, `@import`, `fonts.googleapis`, `<iframe`, `<object`, `<embed`. These must NOT appear. Citation hyperlinks in the references section (e.g. `<a href="https://developer.apple.com/...">`) are allowed — the check targets *render dependencies*, not *citation links*. The only non-citation external URL should be `http://www.w3.org/2000/svg`.
 3. **Version markers:** Title tag, meta footer, and version history table all show the new version
 4. **Section count:** Count `<h2>` tags — matches expected section count
 5. **Content integrity:** Key phrases from prior version still present (no accidental content loss)
@@ -266,3 +279,5 @@ Before delivering any HTML version:
 6. **Icon stripping leaves `</svg>` orphans** — after regex-stripping `<svg class="icon">...</svg>` from headings, check for and clean any leftover `</svg>` tags at the start of heading text: `re.sub(r'(<h[23][^>]*>)\s*</svg>\s*', r'\1', content)`.
 
 7. **Self-contained URL check false positive on citation links** — the old check `grep -oE 'https?://[^"]*' file.html` flags legitimate reference hyperlinks (e.g. `<a href="https://developer.apple.com/...">`) as violations. Scan for *render dependencies* (`<link`, `<script src=`, `@import`, Google Fonts URLs) instead of all HTTP URLs. Citation links in the references section are allowed.
+
+8. **Mermaid DOM-grep false positives** — the inline Mermaid bundle (3.3 MB of minified JS) contains string literals like `"Syntax error in text"` and CSS class names like `error-icon`, so grepping the RAW rendered DOM returns false positives. Strip `<script>` blocks first, then verify the rendered body: `aria-roledescription="flowchart` (don't match the full value — it's `flowchart-v2`), `data-processed="true"`, and real render errors via `<g class="error-icon"`.
