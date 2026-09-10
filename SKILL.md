@@ -37,6 +37,61 @@ For Change Requests, effort statements, and other billing-purpose documents:
 
 **Editing & verification pattern for generated docs:** apply many content edits via `execute_code` with a list of `(old, new, expected_count)` tuples — `raise SystemExit` on any count mismatch — then run remnant checks (grep for removed phrases and old totals), an HTMLParser tag-balance pass, and an external-URL scan before delivering. This catches orphaned table rows and leftover phrases a visual pass misses. **Pitfall:** never name the document string `html` in a script that also does `from html.parser import HTMLParser` — the import rebinds the name to the stdlib module and `feed(html)` fails with `TypeError: can only concatenate str (not "module") to str`. Name it `doc`.
 
+## Approval & Sign-Off Footer (MANDATORY)
+
+Every enterprise document must include an **Approval & Sign-Off** table in the footer (before the Version History section). The table contains one row per approver role with columns: **Role | Name | Signature | Remarks | Date**. The `Signature` column is left blank (for wet/digital signing). The `Remarks` column is left blank (filled by the approver). The `Date` column is left blank (filled on sign-off).
+
+The approver roles included depend on the **document type** (from the `TYPE` field in the Document ID). Use the mapping below. When a document spans multiple types, include the union of all relevant roles. If the user specifies custom approver roles, use those instead.
+
+| Document Type | TYPE Code | Required Approver Roles |
+|---|---|---|
+| Change Request | CR | Project Manager, Solution Architect, Client Sponsor |
+| Technical Specification | TS | Solution Architect, Technical Lead, Project Manager |
+| Business Analysis / Requirements | BA | Business Analyst, Project Manager, Solution Architect |
+| Meeting Minutes / Decision Record | MM | Project Manager, Attendees (chair) |
+| Project Plan / Schedule | PP | Project Manager, Client Sponsor |
+| Risk Assessment | RA | Project Manager, Solution Architect, Risk Owner |
+| Research / Investigation Report | RES | Solution Architect, Project Manager |
+| Effort / Billing Statement | ES | Project Manager, Client Sponsor, Finance Approver |
+| Architecture / Design Document | AR | Solution Architect, Technical Lead, Project Manager |
+| Test Plan / Test Report | TP | Test Lead, Project Manager, Solution Architect |
+| Release / Deployment Plan | RP | Release Manager, Solution Architect, Project Manager |
+| Policy / Governance Document | POL | Governance Lead, Project Manager, Client Sponsor |
+| General / Other | GEN | Project Manager, Solution Architect |
+
+**Role definitions:**
+- **Project Manager (PM):** Owns timeline, scope, and delivery accountability.
+- **Solution Architect (SA):** Owns technical design, feasibility, and architecture decisions.
+- **Business Analyst (BA):** Owns requirements elicitation, analysis, and traceability.
+- **Technical Lead:** Owns implementation approach and technical quality.
+- **Client Sponsor:** Business owner funding the project; final approval authority.
+- **Finance Approver:** Authorizes billing/invoicing figures (effort statements only).
+- **Test Lead:** Owns test strategy, coverage, and quality gates.
+- **Release Manager:** Owns deployment risk, rollback, and release coordination.
+- **Governance Lead:** Owns policy compliance and audit trail.
+- **Risk Owner:** Accountable for identified risk mitigation.
+
+**HTML structure for the sign-off table:**
+```html
+<section id="approval-signoff">
+  <h2><svg class="icon" ...>...</svg> Approval &amp; Sign-Off</h2>
+  <table class="signoff-table">
+    <thead>
+      <tr><th>Role</th><th>Name</th><th>Signature</th><th>Remarks</th><th>Date</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Project Manager</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>Solution Architect</td><td></td><td></td><td></td><td></td></tr>
+      <!-- ... one row per required role ... -->
+    </tbody>
+  </table>
+</section>
+```
+
+**Styling:** Use the standard table style from the Design System. The `Name`, `Signature`, `Remarks`, and `Date` cells should have `min-height: 36px` (via `padding: 18px 12px`) to leave adequate signing space. The section sits as the **last content section** before Version History.
+
+**Print consideration:** The sign-off table must fit on a single A4 page when printing. If the role count exceeds 6, add `page-break-inside: avoid` to the section to prevent splitting across pages.
+
 ## Design System (Notion-Style Light Mode)
 
 David's standard for enterprise HTML documents:
@@ -192,6 +247,7 @@ Before delivering any HTML version:
 5. **Content integrity:** Key phrases from prior version still present (no accidental content loss)
 6. **No placeholder text:** Search for `PLACEHOLDER`, `TODO`, `XXX` — none should remain
 7. **File size:** Note the size (base64 logo adds ~48 KB)
+8. **Approval & Sign-Off table:** Confirm the `#approval-signoff` section exists with the correct approver roles for the document TYPE (per the mapping in the Approval & Sign-Off Footer section). Each row must have all 5 columns (Role, Name, Signature, Remarks, Date) with Name/Signature/Remarks/Date left blank.
 
 ## Pitfalls
 
