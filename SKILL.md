@@ -41,7 +41,7 @@ For Change Requests, effort statements, and other billing-purpose documents:
 
 Every enterprise document must include an **Approval & Sign-Off** table in the footer (before the Version History section). The table contains one row per approver role with columns: **Role | Name | Signature | Remarks | Date**. The `Signature` column is left blank (for wet/digital signing). The `Remarks` column is left blank (filled by the approver). The `Date` column is left blank (filled on sign-off).
 
-The approver roles included depend on the **document type** (from the `TYPE` field in the Document ID). Use the mapping below. When a document spans multiple types, include the union of all relevant roles. If the user specifies custom approver roles, use those instead.
+The approver roles included depend on the **document type** (from the `TYPE` field in the Document ID). Use the mapping below as the **default maximum set** for each type, then apply the relevance filter (next subsection) to remove any role that has no direct stake in the document's subject matter. When a document spans multiple types, start with the union of all relevant roles, then filter. If the user specifies custom approver roles, use those instead.
 
 | Document Type | TYPE Code | Required Approver Roles |
 |---|---|---|
@@ -58,6 +58,20 @@ The approver roles included depend on the **document type** (from the `TYPE` fie
 | Release / Deployment Plan | RP | Release Manager, Solution Architect, Project Manager |
 | Policy / Governance Document | POL | Governance Lead, Project Manager, Client Sponsor |
 | General / Other | GEN | Project Manager, Solution Architect |
+
+### Relevance Filter (MANDATORY)
+
+The mapping table above provides the default role set per document type, but **not every role in the default set is necessarily relevant to the specific document being generated**. Before generating the sign-off table, evaluate each role against the document's actual content and scope. Include a role only if its responsibilities (see Role definitions below) intersect with the document's subject matter. Exclude any role that has no direct stake.
+
+**How to determine relevance:**
+- Read the document's sections and identify which stakeholder functions are actually involved (e.g., does the document involve technical architecture? financial figures? testing? deployment? governance?).
+- For each role in the default set, ask: "Does this role's area of ownership appear in the document's content?" If no, exclude it.
+- **Minimum:** every sign-off table must have at least one approver role. If filtering removes all roles, fall back to the full default set for that type and note the reason in chat.
+- **Examples:**
+  - A Change Request for a pure CSS restyling (no architecture impact) → exclude Solution Architect; keep Project Manager + Client Sponsor.
+  - A Research Report on a non-technical business topic → exclude Solution Architect; keep Project Manager.
+  - A Technical Specification for a deployment tool → include Solution Architect + Technical Lead; exclude Project Manager only if the doc has no timeline/scope content.
+  - A Risk Assessment focused solely on schedule risk → exclude Solution Architect; keep Project Manager + Risk Owner.
 
 **Role definitions:**
 - **Project Manager (PM):** Owns timeline, scope, and delivery accountability.
@@ -260,7 +274,7 @@ Before delivering any HTML version:
 5. **Content integrity:** Key phrases from prior version still present (no accidental content loss)
 6. **No placeholder text:** Search for `PLACEHOLDER`, `TODO`, `XXX` — none should remain (the `PLACEHOLDER_B64` logo marker must have been replaced)
 7. **File size:** Note the size (base64 logo adds ~48 KB)
-8. **Approval & Sign-Off table:** Confirm the `#approval-signoff` section exists with the correct approver roles for the document TYPE (per the mapping in the Approval & Sign-Off Footer section). Each row must have all 5 columns (Role, Name, Signature, Remarks, Date) with Name/Signature/Remarks/Date left blank.
+8. **Approval & Sign-Off table:** Confirm the `#approval-signoff` section exists with only the approver roles that are **relevant to the document's actual content** (per the Relevance Filter in the Approval & Sign-Off Footer section — not blindly the full default set from the mapping table). Each row must have all 5 columns (Role, Name, Signature, Remarks, Date) with Name/Signature/Remarks/Date left blank. Verify that every included role's area of ownership appears in the document's content, and that no irrelevant role was included.
 9. **Batch verification:** Run all checks above in a single `execute_code` script — HTMLParser tag-balance pass, regex URL scan, `re.findall` for placeholders, section/reference/logo counts, a grep for `Iris-SPM`, and an **author-attribution resolved check** (grep for placeholder tokens like `AUTHOR_NAME`, `{{author}}`, `TBD`, or an empty `Prepared By` field — the author name must be a concrete resolved value, not a placeholder). Raise on any mismatch. This catches issues a visual pass misses and is faster than running each check separately.
 10. **Browser render:** After the script checks pass, render in a real browser (Playwright headless Chromium via `execute_code` if `browser_exec` is unavailable) at 1280px viewport, take a full-page screenshot, and feed to `vision_analyze` for layout/contrast/clipping inspection. Do not claim verification unless a real render completed.
 
