@@ -167,7 +167,15 @@ h3 > .icon{color:var(--muted);width:16px;height:16px}
 - Light mode: `/root/assets/GNT_logo_clean_lightmode.svg` (36 KB)
 - Dark mode: `/root/assets/GNT_logo_clean_darkmode.svg` (36 KB)
 
-**Selection rule:** Use lightmode variant for white/light backgrounds (`#FFFFFF`, `#FAFAFE`). Use darkmode variant for dark backgrounds (`#0A0A0A`, `#1A1A2E`).
+**Selection rule:** Use lightmode variant for white/light backgrounds (`#FFFFFF`, `#FAFAFE`). For dark backgrounds (`#0A0A0A`, `#1A1A2E`, `#0D1117`), do NOT use the darkmode SVG directly — it has a full A4 canvas viewBox (`0 0 21000 29700`) with the logo in a tiny corner, making it invisible at 42px height. Instead, use the lightmode SVG (tight viewBox `0 0 7826 1663`) with `fill:black` replaced by `fill:#E6EDF3` (or the dark theme's text color) to make the black text elements visible on dark backgrounds:
+
+```python
+import base64
+with open('/root/assets/GNT_logo_clean_lightmode.svg', 'r') as f:
+    svg = f.read()
+svg = svg.replace('.fil3 {fill:black;fill-rule:nonzero}', '.fil3 {fill:#E6EDF3;fill-rule:nonzero}')
+b64 = base64.b64encode(svg.encode('utf-8')).decode('ascii')
+```
 
 **Embedding technique:** Base64-encode the SVG file and embed as `<img src="data:image/svg+xml;base64,...">`. This keeps the HTML self-contained (no external file dependency, works under `file://`).
 
@@ -186,7 +194,15 @@ with open('/root/assets/GNT_logo_clean_lightmode.svg','rb') as f:
 
 ## Diagrams: Mermaid.js Standard (Inline Embedding)
 
-Flowcharts, architecture diagrams, and sequence diagrams in HTML documentation and reports must use **Mermaid.js** with responsive container styling (`.mermaid-wrapper { display: flex; justify-content: center; overflow-x: auto; }`).
+Flowcharts, architecture diagrams, and sequence diagrams in HTML documentation and reports must use **Mermaid.js** with responsive container styling. The wrapper and pre element must both be sized correctly to prevent the SVG from shrinking or overflowing:
+
+```css
+.mermaid-wrapper { display: flex; justify-content: center; overflow-x: auto; margin-bottom: 16px; padding: 12px 0; }
+.mermaid-wrapper .mermaid { font-size: 15px !important; width: 100% !important; }
+.mermaid-wrapper svg { max-width: 100% !important; height: auto !important; }
+```
+
+The `width: 100%` on `.mermaid` (the `<pre>` element) is MANDATORY — without it, the flex child shrinks to content width (~300px) and the SVG's `width: 100%` resolves against that shrunken parent instead of the full card width.
 
 **Inline embedding is MANDATORY** — never load Mermaid from a CDN (`<script src=...>` violates Self-Contained Requirements and breaks offline `file://` use).
 
@@ -237,18 +253,24 @@ Strict SemVer-style versioning applies to HTML documents:
 
 See `references/print-pipeline.md` for the full A4 @page CSS template and weasyprint command.
 
+**Pre-flight enterprise compliance gate (MANDATORY before PDF generation):** Before running weasyprint on any HTML document, verify it has ALL enterprise-required elements: GNT logo (base64-embedded, correct light/dark variant), frontmatter header (DOC ID, author, date, version, status), Approval & Sign-Off section, Glossary, and Version History. If any are missing, add them to the HTML first, then generate the PDF. Generating a PDF without these elements produces a non-compliant deliverable that will be rejected.
+
 **Key steps:**
-1. Copy the latest screen-version HTML
-2. Replace `<style>` block with print-optimized CSS (A4 @page, smaller fonts, page-break rules)
-3. Strip inline Lucide SVG icons (they're too small to print legibly) — use the depth-counting regex in `references/print-pipeline.md`
-4. Add `@page` rules: `size: A4; margin: 18mm 14mm 20mm 14mm` with running header and page counter
-5. Add `page-break-inside: avoid` on table rows, diagram cards, and callouts
-6. Add `break-after: avoid` on h2/h3 headings
-7. Render: `weasyprint input.html output.pdf`
-8. Verify with `pdfinfo output.pdf` (check page count, page size = A4)
+1. **Enterprise compliance check** — verify GNT logo, frontmatter, sign-off, glossary, version history are present in the HTML; add any missing elements before proceeding
+2. Copy the latest screen-version HTML
+3. Replace `<style>` block with print-optimized CSS (A4 @page, smaller fonts, page-break rules)
+4. Strip inline Lucide SVG icons (they're too small to print legibly) — use the depth-counting regex in `references/print-pipeline.md`
+5. Add `@page` rules: `size: A4; margin: 18mm 14mm 20mm 14mm` with running header and page counter
+6. Add `page-break-inside: avoid` on table rows, diagram cards, and callouts
+7. Add `break-after: avoid` on h2/h3 headings
+8. **Convert CSS grid → flexbox** — WeasyPrint does not support `display: grid` at all (not just `gap`); grids are silently ignored and children stack vertically. Replace `display: grid; grid-template-columns: repeat(auto-fit, minmax(Npx, 1fr)); gap: M` with `display: flex; flex-wrap: wrap` + `flex: 1 1 Npx; margin: M/2` on children. See `references/print-pipeline.md` for the full conversion pattern.
+9. Render: `weasyprint input.html output.pdf`
+10. Verify with `pdfinfo output.pdf` (check page count, page size = A4)
 
 **weasyprint quirks:**
-- Ignores CSS `gap` property on flex containers — use `margin` instead
+- Does NOT support `display: grid` at all — the entire grid layout is silently ignored and children stack vertically. This is NOT harmless when grids carry critical layout (stats grids, feature cards, comparison grids). Convert all `display: grid` to `display: flex; flex-wrap: wrap` with `flex: 1 1 <min>px` on children before rendering.
+- Ignores CSS `gap` property on flex containers — use `margin` on children instead
+- Ignores `@media` queries with feature syntax like `(max-width: 640px)` — wrap responsive rules in `@media screen` or inline them
 - `running()` header works with `position: running(hdr)` + `@top-left { content: element(hdr) }`
 - Page counter: `@bottom-center { content: counter(page) " of " counter(pages) }`
 - Max SVG diagram height should be constrained to ~140mm to fit within A4 margins
@@ -283,7 +305,7 @@ Before delivering any HTML version:
 
 1. **Nested SVG icons** — wrapping a Lucide `<svg>` inside another `<svg class="icon">` creates nesting that breaks HTML parser balance. Use a single `<svg>` per icon. When stripping for print, naive regex (`<svg class="icon">.*?</svg>`) leaves orphan `</svg>` tags — use depth-counting instead.
 
-2. **weasyprint `gap` warning** — weasyprint ignores `gap` on flex. Replace with `margin` on children. Non-fatal (just a warning) but layout won't match screen version exactly.
+2. **weasyprint does NOT support CSS grid** — `display: grid` is silently ignored entirely, causing children to stack vertically. This is NOT a harmless warning when grids carry critical layout (stats grids, feature cards, comparison matrices). Convert all `display: grid; grid-template-columns: repeat(auto-fit, minmax(Npx, 1fr)); gap: M` to `display: flex; flex-wrap: wrap` + `flex: 1 1 Npx; margin: M/2` on children before rendering. Also replace `gap` on flex containers with `margin` on children. See `references/print-pipeline.md` for the full conversion pattern.
 
 3. **Base64 logo injection** — don't try to inline 48 KB of base64 in a `patch` tool call. Write the HTML with a `PLACEHOLDER_B64` marker, then use Python `str.replace()` to inject the actual base64 string.
 
@@ -295,4 +317,14 @@ Before delivering any HTML version:
 
 7. **Self-contained URL check false positive on citation links** — the old check `grep -oE 'https?://[^"]*' file.html` flags legitimate reference hyperlinks (e.g. `<a href="https://developer.apple.com/...">`) as violations. Scan for *render dependencies* (`<link`, `<script src=`, `@import`, Google Fonts URLs) instead of all HTTP URLs. Citation links in the references section are allowed.
 
-8. **Mermaid DOM-grep false positives** — the inline Mermaid bundle (3.3 MB of minified JS) contains string literals like `"Syntax error in text"` and CSS class names like `error-icon`, so grepping the RAW rendered DOM returns false positives. Strip `<script>` blocks first, then verify the rendered body: `aria-roledescription="flowchart` (don't match the full value — it's `flowchart-v2`), `data-processed="true"`, and real render errors via `<g class="error-icon"`.
+8. **Mermaid bundle string-literal false positives in multiple checks** — the inline Mermaid bundle (3.3 MB of minified JS) contains string literals like `"Syntax error in text"`, CSS class names like `error-icon`, and HTML fragments like `<iframe style=...`. These trigger false positives in BOTH the self-contained dependency scan (grepping for `<iframe`/`<object`/`<embed`) AND the rendered-DOM verification (grepping for `error-icon`). Strip `<script>` blocks from the document string before running any grep-based check — for the self-contained scan, for the Mermaid render verification, and for placeholder scans. After stripping, verify the rendered body via: `aria-roledescription="flowchart` (don't match the full value — it's `flowchart-v2`), `data-processed="true"`, and real render errors via `<g class="error-icon"`.
+
+9. **HTMLParser void-element false positives in tag-balance check** — the `handle_endtag` callback fires for self-closing void elements written with `/>` syntax (`<meta ... />`, `<img ... />`, `<input ... />`), producing "Unmatched close" errors that are false positives. If the stack is empty after processing all content, the HTML is well-formed. Fix: skip void elements in `handle_endtag` — check `tag not in ('meta','img','input','br','hr','link','area','base','col','embed','source','track','wbr')` before appending an error. Alternatively, treat "Unmatched close" entries for void-element tag names as non-errors when the stack is empty.
+
+10. **Base64 data URI false positives in placeholder scan** — the verification step that greps for `TBD`, `PLACEHOLDER`, `TODO`, etc. will match substrings inside base64-encoded content (logos, embedded images). For example, `xml:space="preserve"` in the SVG logo base64-encodes to a sequence containing `tbd`. Strip `data:[^;]+;base64,[A-Za-z0-9+/=]+` from the document string before running `re.findall` for placeholder tokens — same principle as pitfall 7 (citation-link false positives) and pitfall 8 (Mermaid DOM-grep false positives).
+
+11. **`@media print` in dark-themed HTML destroys contrast in weasyprint PDF** — a `@media print { body { background: #fff; color: #000; } .card { background: #f5f5f5; } }` block forces white backgrounds and black text, but does NOT override dark-theme CSS variables (`--text-muted`, `--border`, colored `td.green`/`td.warn`/`td.red` classes). The result: muted text, table borders, and colored cells become invisible on white. Remove the `@media print` block entirely from dark-themed HTML before running weasyprint — the dark theme CSS renders correctly as-is in PDF output.
+
+12. **Chromium OOM with large inline JS bundles** — on constrained VMs (≤4 vCPU / 16 GB), the 3.3 MB inline Mermaid bundle can crash headless Chromium during full-page screenshot rendering with `V8 process OOM (Failed to reserve virtual memory for CodeRange)`. Both Playwright and `chromium-browser --screenshot` fail; `browser_exec` may also fail with `CDP response channel closed`. **Fallback hierarchy:** (a) `chromium-browser --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom 'file://...path...' > /tmp/dom_dump.txt` still works for structural verification (grep for h2 count, `signoff-table`, `gnt-logo`, `role-cell`). (b) For diagram size measurement specifically, launch Chromium with `--remote-debugging-port=9222`, connect via Python `websockets` to the page-level CDP endpoint from `http://localhost:9222/json`, navigate with `Page.navigate`, wait for render, then call `Runtime.evaluate` with a JS snippet that reads `getBoundingClientRect()` on each SVG. This CDP approach handles the 3.3 MB bundle without the OOM that kills Playwright's multi-process model. Do not loop on screenshot retries — switch to DOM-dump or CDP immediately after the first OOM crash.
+
+13. **Mermaid `<pre>` flex-child shrinking** — when `.mermaid-wrapper` uses `display: flex`, the child `<pre class="mermaid">` has no intrinsic width and shrinks to content size (~300px). The SVG's `width: 100%` then resolves against the shrunken pre, producing tiny diagrams despite `useMaxWidth: true`. Fix: set `width: 100% !important` on `.mermaid-wrapper .mermaid`. Do NOT remove `useMaxWidth: true` to compensate — that causes overflow instead. The correct combination is `useMaxWidth: true` (Mermaid config) + `width: 100%` (CSS on pre) + `max-width: 100%` (CSS on SVG).

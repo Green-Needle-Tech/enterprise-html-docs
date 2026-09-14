@@ -118,9 +118,50 @@ content = re.sub(r'(<h[23][^>]*>)\s*</svg>\s*', r'\1', content)
 weasyprint input.html output.pdf
 ```
 
-### Known Warnings (Non-Fatal)
-- `Ignored 'gap:6mm' at 61:24, unknown property` — weasyprint doesn't support CSS `gap` on flex. Replace with `margin` on children. Layout still renders, just without flex gap spacing.
+### Known Warnings
+- `Ignored 'display: grid'` — WeasyPrint does NOT support CSS grid at all. Grid containers are silently ignored and children stack vertically. This breaks stats grids, feature card layouts, and comparison grids. **Fix:** convert `display: grid; grid-template-columns: repeat(auto-fit, minmax(Npx, 1fr)); gap: M` to `display: flex; flex-wrap: wrap` + `.child { flex: 1 1 Npx; margin: 0.375rem; }` on each child.
+- `Ignored 'gap: M'` — WeasyPrint doesn't support `gap` on flex either. Replace with `margin` on children (half the gap value on each side).
+- `Invalid media type '(max-width: 640px)'` — WeasyPrint ignores `@media` queries with feature syntax. Responsive rules won't apply. Either inline the mobile styles or wrap them in `@media screen`.
 - Large base64 images may produce memory warnings on very large documents.
+
+### Grid → Flexbox Conversion Pattern
+
+Before running weasyprint, scan the HTML for `display: grid` and convert each instance:
+
+```python
+import re
+
+# Pattern: display: grid; grid-template-columns: repeat(auto-fit, minmax(Npx, 1fr)); gap: Mrem;
+# Convert to: display: flex; flex-wrap: wrap;
+# Then add to children: flex: 1 1 Npx; margin: 0.375rem;
+
+# Example conversion (do via patch tool or execute_code):
+# BEFORE:
+#   .stats-grid {
+#     display: grid;
+#     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+#     gap: 0.75rem;
+#     margin-bottom: 1.5rem;
+#   }
+# AFTER:
+#   .stats-grid {
+#     display: flex;
+#     flex-wrap: wrap;
+#     margin-bottom: 1.5rem;
+#   }
+#   .stats-grid .stat { flex: 1 1 160px; margin: 0.375rem; }
+```
+
+Also convert `display: flex; gap: M` patterns — replace `gap` with `margin` on children:
+```python
+# BEFORE: .header .meta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+# AFTER:  .header .meta { display: flex; flex-wrap: wrap; }
+#         .header .meta > * { margin-right: 0.75rem; }
+```
+
+### Dark-Theme HTML → PDF (No Print CSS Override)
+
+When converting a dark-themed HTML document (GitHub-style `#0D1117` background) to PDF via weasyprint, do NOT add a `@media print` block that overrides to white backgrounds. WeasyPrint renders dark themes correctly as-is. A print override only changes `body` and `.card` backgrounds but leaves CSS variables (`--text-muted`, `--border`) and colored table cells (`td.green`, `td.warn`, `td.red`) with their dark-theme values — producing invisible text on white. Remove any existing `@media print` block before rendering.
 
 ### Verification
 

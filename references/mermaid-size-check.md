@@ -4,84 +4,79 @@
 
 After rendering any HTML document containing Mermaid diagrams, run this check to verify diagrams are not too small (cramped/unreadable) or too big (clipping/overflowing their container).
 
-## JS Size-Check Snippet
+## The Root Cause of Tiny Diagrams
 
-Inject this script at the end of the HTML `<body>` (after the Mermaid bundle + initialize scripts). It runs after Mermaid renders, measures each `.mermaid-wrapper` SVG, and writes a JSON report to a hidden `<div id="size-report">`.
+When `.mermaid-wrapper` uses `display: flex`, the child `<pre class="mermaid">` has no intrinsic width and shrinks to content size (~300px). The SVG's `width: 100%` then resolves against the shrunken pre, producing tiny diagrams despite `useMaxWidth: true` being set correctly in the Mermaid config.
 
-```javascript
-setTimeout(function() {
-  var results = [];
-  var wrappers = document.querySelectorAll('.mermaid-wrapper');
-  wrappers.forEach(function(wrapper, i) {
-    var svg = wrapper.querySelector('svg');
-    if (!svg) { results.push({index: i, status: 'FAIL', reason: 'no SVG rendered'}); return; }
-    var svgRect = svg.getBoundingClientRect();
-    var wrapperRect = wrapper.getBoundingClientRect();
-    var viewBox = svg.getAttribute('viewBox') || '';
-    var vbParts = viewBox.split(/\s+/).map(parseFloat);
-    var vbWidth = vbParts[2] || 0;
-    var vbHeight = vbParts[3] || 0;
-    var scaleX = svgRect.width / (vbWidth || 1);
-    var scaleY = svgRect.height / (vbHeight || 1);
+**The fix is CSS, not Mermaid config:** set `width: 100% !important` on `.mermaid-wrapper .mermaid`. Do NOT remove `useMaxWidth: true` to compensate — that causes overflow. The correct combination is:
 
-    var issues = [];
-    // Check 1: too small (rendered width < 200px means text likely unreadable)
-    if (svgRect.width < 200) issues.push('too_small_width:' + Math.round(svgRect.width) + 'px');
-    // Check 2: too small height (rendered height < 80px)
-    if (svgRect.height < 80) issues.push('too_small_height:' + Math.round(svgRect.height) + 'px');
-    // Check 3: horizontal clipping (SVG wider than wrapper, scroll appears)
-    if (wrapper.scrollWidth > wrapper.clientWidth + 1)
-      issues.push('horizontal_clip:scroll=' + wrapper.scrollWidth + 'vs_client=' + wrapper.clientWidth);
-    // Check 4: SVG overflows wrapper visually
-    if (svgRect.width > wrapperRect.width + 1)
-      issues.push('svg_overflows_wrapper:' + Math.round(svgRect.width) + 'vs' + Math.round(wrapperRect.width));
-    // Check 5: extreme aspect ratio (width:height > 10:1 or height:width > 10:1)
-    var ratio = svgRect.width / (svgRect.height || 1);
-    if (ratio > 10) issues.push('extreme_wide_ratio:' + ratio.toFixed(1));
-    if (ratio < 0.1) issues.push('extreme_tall_ratio:' + (1/ratio).toFixed(1));
-    // Check 6: scale factor too small (viewBox much larger than rendered = shrunk too much)
-    if (scaleX < 0.3 && vbWidth > 500) issues.push('over_shrunk:scale=' + scaleX.toFixed(2) + 'vbW=' + Math.round(vbWidth));
-
-    results.push({
-      index: i,
-      status: issues.length === 0 ? 'PASS' : 'FAIL',
-      issues: issues,
-      renderedW: Math.round(svgRect.width),
-      renderedH: Math.round(svgRect.height),
-      viewBoxW: Math.round(vbWidth),
-      viewBoxH: Math.round(vbHeight),
-      scaleX: +scaleX.toFixed(2),
-      scaleY: +scaleY.toFixed(2),
-      wrapperW: wrapper.clientWidth,
-      scrollW: wrapper.scrollWidth
-    });
-  });
-  document.getElementById('size-report').textContent = JSON.stringify(results, null, 2);
-}, 4000);
+```css
+.mermaid-wrapper .mermaid { font-size: 15px !important; width: 100% !important; }
+.mermaid-wrapper svg { max-width: 100% !important; height: auto !important; }
 ```
 
-## How to Run
+```javascript
+mermaid.initialize({
+  startOnLoad: true,
+  theme: "default",
+  securityLevel: "loose",
+  flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis", nodeSpacing: 50, rankSpacing: 60 }
+});
+```
 
-1. Temporarily inject the size-check script + `<div id="size-report" style="display:none;"></div>` into the HTML
-2. Render in headless Chromium: `chromium-browser --headless=new --no-sandbox --disable-gpu --dump-dom --virtual-time-budget=12000 --window-size=1280,900 file://<path>`
-3. Extract the JSON from the `#size-report` div in the output DOM (strip `<script>` blocks first to avoid Mermaid bundle false positives)
-4. Verify every diagram has `status: "PASS"`; if any `FAIL`, fix the diagram and re-render
+## CDP-Based Measurement (Reliable on Constrained VMs)
 
-## Failure Thresholds
+When Playwright and `browser_exec` fail with OOM on the 3.3 MB inline Mermaid bundle, use direct CDP via Python websockets:
 
-| Check | Threshold | Reason |
+1. Launch Chromium with remote debugging:
+   ```python
+   subprocess.Popen(['chromium-browser', '--headless', '--no-sandbox', '--disable-gpu',
+     '--disable-dev-shm-usage', '--remote-debugging-port=9222', 'about:blank'])
+   time.sleep(3)
+   ```
+2. Get the page websocket URL from `http://localhost:9222/json` (use `localhost`, not the IP — secret redaction mangles bracketed IP literals in urllib).
+3. Connect via `websockets.connect(page_ws)`, send `Page.navigate` to the file URL, wait 8–10s for Mermaid render.
+4. Call `Runtime.evaluate` with a JS snippet that reads `getBoundingClientRect()` on each SVG and its parent `<pre>` and card container.
+5. Compare: SVG width should be ≤ card width (no overflow) and ≥ 80% of card width (not undersized).
+
+## JS Measurement Snippet
+
+```javascript
+(() => {
+  const svgs = document.querySelectorAll('.mermaid-wrapper svg');
+  const results = [];
+  svgs.forEach((svg, i) => {
+    const rect = svg.getBoundingClientRect();
+    const pre = svg.parentElement;
+    const preRect = pre.getBoundingClientRect();
+    const cardRect = pre.parentElement.parentElement.getBoundingClientRect();
+    results.push({
+      index: i,
+      svgWidth: Math.round(rect.width),
+      svgHeight: Math.round(rect.height),
+      preWidth: Math.round(preRect.width),
+      cardWidth: Math.round(cardRect.width),
+      bodyClientWidth: document.body.clientWidth,
+      dataProcessed: pre.getAttribute('data-processed'),
+      viewBox: svg.getAttribute('viewBox')
+    });
+  });
+  return JSON.stringify(results);
+})()
+```
+
+## Pass/Fail Criteria
+
+| Check | Pass Condition | Reason |
 |---|---|---|
-| `too_small_width` | rendered width < 200px | Text in nodes becomes unreadable |
-| `too_small_height` | rendered height < 80px | Diagram is cramped flat |
-| `horizontal_clip` | wrapper.scrollWidth > clientWidth | Diagram overflows container horizontally |
-| `svg_overflows_wrapper` | SVG width > wrapper width | SVG spills outside its container |
-| `extreme_wide_ratio` | width:height > 10:1 | Diagram is unnaturally stretched wide |
-| `extreme_tall_ratio` | height:width > 10:1 | Diagram is unnaturally stretched tall |
-| `over_shrunk` | scale < 0.3 AND viewBox > 500px | Large viewBox squeezed too small |
+| Diagram rendered | `data-processed === "true"` | Mermaid processed the diagram |
+| No overflow | `svgWidth <= cardWidth` | SVG stays within container |
+| Not undersized | `svgWidth >= cardWidth * 0.8` | SVG fills most of the container |
+| Pre fills container | `preWidth >= cardWidth - 50` | The `<pre>` element is not shrunken |
 
 ## Fixes for Common Failures
 
-- **Too small / over-shrunk**: Remove `useMaxWidth: true` or set explicit `max-width` on the wrapper to prevent excessive shrinking. Alternatively, break a wide horizontal flowchart into a 2D grid layout (use subgraphs or `flowchart TD` with branches).
-- **Horizontal clipping**: Ensure `.mermaid-wrapper` has `overflow-x: auto` so the diagram scrolls rather than clips. If the diagram is genuinely too wide, restructure it (e.g., split into multiple smaller diagrams).
-- **Extreme aspect ratio**: Redesign the diagram layout — wide chains should wrap into rows; tall chains should use `flowchart LR` with branches or group levels into subgraphs.
-- **Too narrow (tall diagrams)**: Add `min-width` to the wrapper or adjust the SVG `width` attribute after render via JS.
+- **SVG too small (300px in a 700px card)**: Add `width: 100% !important` to `.mermaid-wrapper .mermaid`. The `<pre>` flex child is shrinking to content width. This is the most common failure.
+- **SVG overflows container**: Ensure `useMaxWidth: true` in Mermaid config AND `max-width: 100% !important` on `.mermaid-wrapper svg`. Do NOT set `max-width: none`.
+- **Horizontal clipping**: Ensure `.mermaid-wrapper` has `overflow-x: auto`. If the diagram is genuinely too wide, restructure it (split into multiple smaller diagrams, change `flowchart LR` to `flowchart TD`).
+- **Extreme aspect ratio (width:height > 10:1)**: Redesign the diagram layout — wide chains should wrap into rows; use subgraphs or change flow direction.
