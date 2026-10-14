@@ -74,13 +74,15 @@ Replace the screen `<style>` block with this print-optimized version:
 
 Naive regex `<svg class="icon">.*?</svg>` fails on nested SVGs (Lucide icons wrapped in an outer container SVG). Use this depth-counting approach instead:
 
+**Off-by-one trap:** the needle `'<svg class="icon"'` is 17 characters — slice `text[i:i+18]` never matches and the strip silently removes NOTHING. Always slice `text[i:i+17]`. When icons are single non-nested `<svg>` roots (the common case for inline Lucide icons), a plain `re.sub(r'<svg class="icon"[^>]*>.*?</svg>', '', html, flags=re.DOTALL)` is sufficient and easier to get right; use depth-counting only when nested SVGs are actually present.
+
 ```python
 def strip_icon_in_heading(text):
     """Remove <svg class="icon"...>...</svg> blocks, handling nested SVGs."""
     out = []
     i = 0
     while i < len(text):
-        if text[i:i+18] == '<svg class="icon"':
+        if text[i:i+17] == '<svg class="icon"':
             depth = 1
             j = text.find('>', i) + 1
             while j < len(text) and depth > 0:
@@ -163,11 +165,38 @@ Also convert `display: flex; gap: M` patterns — replace `gap` with `margin` on
 
 When converting a dark-themed HTML document (GitHub-style `#0D1117` background) to PDF via weasyprint, do NOT add a `@media print` block that overrides to white backgrounds. WeasyPrint renders dark themes correctly as-is. A print override only changes `body` and `.card` backgrounds but leaves CSS variables (`--text-muted`, `--border`) and colored table cells (`td.green`, `td.warn`, `td.red`) with their dark-theme values — producing invisible text on white. Remove any existing `@media print` block before rendering.
 
+### Running Header Pattern (avoid logo clipping and title collision)
+
+Do NOT put the full screen header (logo `<img>` + metadata flex block) in a `position:running(hdr)` element — WeasyPrint renders the running element inside the page margin box, where a wide logo gets clipped and the block collides with page-1 body content. Instead:
+
+- Keep the logo + metadata header as a normal in-body block at the top of page 1 (it doubles as the document frontmatter).
+- Use a **text-only** `@top-center` string running header for pages 2+ (doc ID · version · title · classification), and suppress it on the first page: `@page :first{@top-center{content:none}}`.
+- Keep the page counter in `@bottom-center` on all pages.
+
+### Wide-Table Overflow (10+ columns)
+
+Under `table-layout:auto`, a table with many columns can exceed the printable width and silently clip the last columns past the right margin — WeasyPrint will not warn. For any table wider than ~8 columns:
+
+- Set `table-layout:fixed` and add an explicit `<colgroup>` with percentage widths summing to 100%.
+- Drop the font size one step (e.g. 7.5pt → 6.8pt) and shorten long cell values and headers ("Meets Expectations" → "Meets Exp.", "Band Min–Max (VND)" → "Band Min–Max").
+- Add `word-wrap:break-word; overflow-wrap:break-word` on `td` so long names wrap instead of forcing width.
+
 ### Verification
 
 ```bash
 pdfinfo output.pdf
 # Check: Pages count, Page size (should be 595.276 x 841.89 pts = A4), PDF version
+```
+
+Name the PDF with the source HTML's document ID and version (`<DocumentID>-v<major>_<minor>_<patch>.pdf`) and save it beside the HTML versions in the project folder.
+
+**Visual verification (two passes, both required):** `pdfinfo` checks page count and size, not layout. After it passes:
+
+1. **Structure pass (contact sheet):** `pdftoppm -png -r 60` all pages, stitch with PIL into a contact sheet (4 columns × ceil(N/4) rows), feed to `vision_analyze` — catches blank pages, missing page counters, gross breakage.
+2. **Layout pass (per-page, high-res):** `pdftoppm -png -r 110` the first 2–3 pages, any page holding the widest table, and the final page; feed each to `vision_analyze` asking specifically about overlapping elements, margin overflow, clipped columns, and header/title collision. A 60-dpi contact sheet CANNOT see subtle overlaps or a table column clipped past the right margin — a contact-sheet-only pass has approved PDFs that the user then rejected for layout defects.
+
+```bash
+pdftoppm -png -r 110 -f 1 -l 3 output.pdf /tmp/hi   # high-res layout check
 ```
 
 ## Full Pipeline Script
@@ -189,7 +218,7 @@ def generate_print_html(source_html_path, output_html_path):
         out = []
         i = 0
         while i < len(text):
-            if text[i:i+18] == '<svg class="icon"':
+            if text[i:i+17] == '<svg class="icon"':
                 depth = 1
                 j = text.find('>', i) + 1
                 while j < len(text) and depth > 0:

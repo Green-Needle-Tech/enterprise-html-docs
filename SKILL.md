@@ -13,6 +13,14 @@ description: "Use when creating styled enterprise HTML documents."
 - Generating print-friendly HTML + PDF from an existing HTML doc
 - Any time the user sends an HTML file and asks for modifications
 
+## New Document Build Procedure
+
+1. **Resolve inputs:** author name from the Hermes user profile (ask if absent), DOC ID (`DOC-<TYPE>-<PROJECT>-YYYY-MMDD-NN`), and create `<HOME>/enterprise-document/<PROJECT>/` if missing.
+2. **Author in scratch:** write the full HTML to the scratch dir (`/root/.hermes/cache/scratch/`) via `write_file` with two placeholder markers in the source: `LOGO_B64` inside the logo `<img src="data:image/svg+xml;base64,...">` and `MERMAID_JS` as the sole content of the Mermaid `<script>` tag (skip the Mermaid marker entirely for diagram-free docs). Never paste 48 KB of base64 or 3.3 MB of JS through `write_file`/`patch`.
+3. **Inject and save final:** in one `execute_code` script, read the logo SVG and mermaid bundle, `assert doc.count('LOGO_B64') == 1` (and same for `MERMAID_JS`) before `str.replace()`, defensively replace `</script` with `<\/script` in the JS bundle, write the final file to the project dir, then run the full batch verification (see Verification Checklist item 9) in the same script.
+4. **Render-verify locally:** copy the final HTML to `/root/<name>.html` (snap Chromium reads `/root` fine; only `~/.hermes/cache` is unreadable), run `chromium-browser --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom` for structural checks and `--screenshot=/root/<name>.png --window-size=1280,<height>` for visual inspection, feed the screenshot to `vision_analyze`, then delete the probe files from `/root`.
+5. **Sloptrim pre-delivery de-AI pass:** before delivering the final document, run the sloptrim skill to remove AI-writing patterns from the prose (see *Sloptrim Pre-Delivery Pass* below). This is mandatory for all documents containing authored prose paragraphs (skip for pure data tables, forms, or fillable templates with no narrative content).
+
 ## Naming & Attribution Rules (MANDATORY)
 
 - **Never mention "Iris-SPM"** anywhere in a generated document — no references, examples, code samples, or metadata.
@@ -34,6 +42,9 @@ For Change Requests, effort statements, and other billing-purpose documents:
 - **Attribution:** Prepared By = the author name resolved from the Hermes agent user profile or as stated by the user — never an agent name (see Naming & Attribution Rules).
 - **Same-version iterative edits:** content changes requested immediately after generation, before the doc is treated as final, keep the current version number — do not bump. Bump only when the user asks or the doc is re-delivered as a distinct iteration.
 - **Structure that works:** CR overview (ID/type/project/status/source doc) → background & justification → requested change → billable breakdown → rationale → financial summary → approval sign-off block → glossary → version history.
+- **Jira-based cost reports:** when the user provides a Jira ticket export and asks for a development cost/effort report, use the ticket-type-based man-day estimation model in `references/jira-cost-estimation.md` — type weights (Story=8, Task=4, Sub-Task=2, Epic=0 MD), blended daily rate, and the standard report section structure for ES documents.
+
+- **RE (hours-based) cost estimates:** when the user gives a Rough Estimate with per-role hours (BE/FE/BA/QC + overhead rows) and a man-day rate, use the hours exactly as given: cost = hours ÷ 8 × rate. ES sections: Exec Summary → Basis & Exclusions (third-party/cloud fees) → By Discipline → By Feature Group (direct only, shared overhead shown separately) → Top 10 Drivers → Detailed line items → Illustrative team/timeline (only if the RE leaves it blank; label it illustrative) → Tech Stack → Financial Summary → Sign-off (PM, Client Sponsor, Finance) → Glossary → Version History. Show man-days to 3 decimals (e.g. 428.125). Rounding to 2 decimals breaks how the totals reconcile. Reference: `/root/enterprise-document/EMP/DOC-ES-EMP-2026-1012-01-v1_0_0.html`.
 
 **Editing & verification pattern for generated docs:** apply many content edits via `execute_code` with a list of `(old, new, expected_count)` tuples — `raise SystemExit` on any count mismatch — then run remnant checks (grep for removed phrases and old totals), an HTMLParser tag-balance pass, and an external-URL scan before delivering. This catches orphaned table rows and leftover phrases a visual pass misses. **Pitfall:** never name the document string `html` in a script that also does `from html.parser import HTMLParser` — the import rebinds the name to the stdlib module and `feed(html)` fails with `TypeError: can only concatenate str (not "module") to str`. Name it `doc`.
 
@@ -52,6 +63,7 @@ The approver roles included depend on the **document type** (from the `TYPE` fie
 | Project Plan / Schedule | PP | Project Manager, Client Sponsor |
 | Risk Assessment | RA | Project Manager, Solution Architect, Risk Owner |
 | Research / Investigation Report | RES | Solution Architect, Project Manager |
+| Performance / Salary Assessment | EVAL | Project Manager, HR Lead (Compensation & Benefits), Finance Approver |
 | Effort / Billing Statement | ES | Project Manager, Client Sponsor, Finance Approver |
 | Architecture / Design Document | AR | Solution Architect, Technical Lead, Project Manager |
 | Test Plan / Test Report | TP | Test Lead, Project Manager, Solution Architect |
@@ -230,6 +242,16 @@ The `width: 100%` on `.mermaid` (the `<pre>` element) is MANDATORY — without i
    });
    ```
 
+## Theme Variants (Dark ↔ Light)
+
+A restyled copy of an existing document (same content, other theme) is a **minor version bump** — new file (e.g. `v1_1_0`), prior version preserved, version-history row added describing the variant. Convert programmatically, never by hand:
+
+1. Swap the `:root` token block (dark `#0D1117/#161B22/#1C2129/#E6EDF3/#8B949E/#30363D` ↔ light `#FFFFFF/#F7F7F5/#F1F1EF/#1A1A2E/#6B7280/#E5E7EB`), keeping `--accent` and mapping semantic colors to the target palette's variants (e.g. `--good` `#3FB950`→`#059669`, `--bad` `#F85149`→`#DC2626`, `--info` `#58A6FF`→`#2563EB`).
+2. Swap the body text color (`#E6EDF3` ↔ `#37352F`), inline-code color (`#FF7B72` dark ↔ `#EB5757` light), and any hard-coded `rgba(...)` tag/badge backgrounds and gradient stops to the target palette's equivalents.
+3. Re-embed the logo for the target theme (light bg: lightmode SVG as-is; dark bg: lightmode SVG with `fill:black` → theme text color — see GNT Logo Embedding). Do this by re-injecting base64 over a marker, not by editing the existing data URI.
+4. Update version markers in `<title>`, header meta, and footer, and add the version-history row (bold the current version, unbold the previous).
+5. Verify with a **dark-remnant check**: grep the converted file for every hex token of the source theme — any survivor means a hard-coded color outside the token block. Then run the full verification battery (tag balance, self-contained, content integrity) and a real render; confirm content is identical apart from style, version markers, and logo.
+
 ## Versioning Convention
 
 Strict SemVer-style versioning applies to HTML documents:
@@ -275,7 +297,51 @@ See `references/print-pipeline.md` for the full A4 @page CSS template and weasyp
 - Page counter: `@bottom-center { content: counter(page) " of " counter(pages) }`
 - Max SVG diagram height should be constrained to ~140mm to fit within A4 margins
 
-## Self-Contained Requirements
+## Sloptrim Pre-Delivery Pass
+
+Enterprise documents represent professional deliverables. AI-generated prose carries recognizable patterns (AI vocabulary, significance inflation, signposting, transition clusters, canonical slop phrases) that undermine credibility. The sloptrim skill (installed at `~/.hermes/skills/productivity/sloptrim/`) removes these patterns before delivery.
+
+**Mandatory for:** all documents with authored prose paragraphs (research reports, change requests, specifications, assessments, plans).
+**Skip for:** pure data tables, fillable forms with no narrative, templates with placeholder text only.
+
+### Procedure
+
+Run this as a single `execute_code` script after step 4 (render-verify) and before delivery:
+
+1. **Extract prose from HTML:** strip `<script>` and `<style>` blocks, then extract text from `<p>`, `<li>`, `<td>`, and callout elements using regex. Write extracted text to a temp file.
+   ```python
+   import re
+   with open(html_path) as f:
+       html = f.read()
+   html_clean = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL)
+   paras = re.findall(r'<(?:p|li|td)[^>]*>(.*?)</(?:p|li|td)>', html_clean, re.DOTALL)
+   text = '\n\n'.join(re.sub(r'<[^>]+>', '', p).strip() for p in paras if re.sub(r'<[^>]+>', '', p).strip())
+   ```
+
+2. **Score with detect.py:** run `python3 "$DETECT" /tmp/extracted_text.txt` where `DETECT=~/.hermes/skills/productivity/sloptrim/scripts/detect.py`. Read `ai_tell_score` and `ai_tell_band` from the `_metrics` block.
+   - Score ≤ 20 (clean): skip rewrite, proceed to delivery. The prose is already human-quality.
+   - Score 21-40 (light tells): targeted edits to flagged spans only, then re-score.
+   - Score > 40 (mixed/heavy/pervasive): full rewrite of prose paragraphs toward the plain/clear style profile (business prose = conservative mode), then re-score.
+
+3. **Rewrite prose in-place within the HTML:** replace each flagged paragraph's text content using `str.replace()` with `(old, new, expected_count)` assertions. Never run `detect.py --clean` on the HTML file — it normalizes characters in tag attributes and can break the document. Rewrite prose manually (the LLM does this, not the script).
+
+4. **Re-score the cleaned extracted text:** extract again, run detect.py, confirm score dropped to ≤ 25 (light tells or clean). If still > 40, do a second pass (max 2 loops per the sloptrim skill).
+
+5. **Verify HTML integrity after rewrite:**
+   - Tag balance: run HTMLParser, confirm zero unclosed/mismatched tags (see Verification Checklist item 1, skip void elements).
+   - Enterprise elements: DOC ID, author name, sign-off section, version history, glossary, callout blocks all present.
+   - Numbers preserved: every number, date, percentage, unit, proper noun, and hyphenated technical term from the original must survive the rewrite. Grep for key figures.
+   - Word count: output must not exceed 1.25x the input word count (sloptrim cuts, never grows).
+
+6. **Deliver:** if all checks pass, the document is ready. If any check fails, fix and re-verify before delivery.
+
+### What gets removed
+
+The 71-pattern catalogue targets: AI vocabulary (leverage, crucial, transformative, delve, tapestry, showcase, robust, paradigm, harness, holistic, seamless, unlock, unprecedented, multifaceted, elevate, etc.), compulsive intro hooks ("In today's fast-paced world"), signposting ("Let's explore"), editorial interjections ("It's important to note that"), transition clusters (Additionally/Furthermore stacking), significance inflation, canonical slop phrases ("stay ahead of the curve", "drive meaningful impact"), sentence-length monotony, and 60+ other patterns.
+
+### What gets preserved
+
+All factual content: numbers, units, dates, proper nouns, citations, hyphenated technical terms, attributed claims, hedges, rankings, placeholders (`[Name]`, `{{field}}`), and the document's HTML structure, CSS, scripts, and enterprise compliance elements.
 
 Documents run locally via `file://` URLs on Windows. The HTML must be fully self-contained — all JS, CSS, and content inline; no external files of any kind:
 - **No external CSS** — all styles inline in `<style>` block
@@ -292,14 +358,16 @@ Before delivering any HTML version:
 1. **Tag balance:** Run HTML parser, confirm zero unclosed tags and zero mismatches
 2. **Self-contained (dependencies only):** Scan for external CSS/JS/font/HTML dependencies — `grep` for `<link`, `<script src=`, `@import`, `fonts.googleapis`, `<iframe`, `<object`, `<embed`. These must NOT appear. Citation hyperlinks in the references section (e.g. `<a href="https://developer.apple.com/...">`) are allowed — the check targets *render dependencies*, not *citation links*. The only non-citation external URL should be `http://www.w3.org/2000/svg`.
 3. **Version markers:** Title tag, meta footer, and version history table all show the new version
-4. **Section count:** Count `<h2>` tags — matches expected section count
+4. **Section count:** Count `<h2>` tags — matches expected section count. Derive the expected count from the authored structure, not a guess: every content section PLUS the Approval & Sign-Off, Glossary, and Version History sections each contribute one `<h2>`. Asserting a guessed number fails on a correct document and wastes a debug cycle.
 5. **Content integrity:** Key phrases from prior version still present (no accidental content loss)
 6. **No placeholder text:** Search for `PLACEHOLDER`, `TODO`, `XXX` — none should remain (the `PLACEHOLDER_B64` logo marker must have been replaced)
 7. **File size:** Note the size (base64 logo adds ~48 KB)
 8. **Approval & Sign-Off table:** Confirm the `#approval-signoff` section exists with only the approver roles that are **relevant to the document's actual content** (per the Relevance Filter in the Approval & Sign-Off Footer section — not blindly the full default set from the mapping table). Each row must have all 5 columns (Role, Name, Signature, Remarks, Date) with Name/Signature/Remarks/Date left blank. Verify that every included role's area of ownership appears in the document's content, and that no irrelevant role was included.
 9. **Batch verification:** Run all checks above in a single `execute_code` script — HTMLParser tag-balance pass, regex URL scan, `re.findall` for placeholders, section/reference/logo counts, a grep for `Iris-SPM`, and an **author-attribution resolved check** (grep for placeholder tokens like `AUTHOR_NAME`, `{{author}}`, `TBD`, or an empty `Prepared By` field — the author name must be a concrete resolved value, not a placeholder). Raise on any mismatch. This catches issues a visual pass misses and is faster than running each check separately.
 10. **Browser render:** After the script checks pass, render in a real browser (Playwright headless Chromium via `execute_code` if `browser_exec` is unavailable) at 1280px viewport, take a full-page screenshot, and feed to `vision_analyze` for layout/contrast/clipping inspection. Do not claim verification unless a real render completed.
+    **Local `file://` render fallback:** cloud-hosted browser tools cannot open local `file://` URLs (blocked as private/internal address). Render locally with system Chromium instead: `chromium-browser --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom 'file://<path>'` for structural checks (grep the DOM dump for h2 count, signoff-table, logo class), and `--screenshot=/root/<name>.png --window-size=1280,<height>` for visual inspection. Write probe HTML and screenshots directly under `/root/` — snap Chromium reads and writes `/root` paths without redirection, so the private-tmp workaround below only applies to `/tmp` targets. Snap-confined Chromium writing to `/tmp/<name>.png` redirects into its private namespace (`/tmp/snap-private-tmp/snap.chromium/tmp/<name>.png`) and may report "Permission denied" at the requested path while succeeding silently — glob the private-tmp path and copy. Capture tall pages by setting an explicit large `--window-size` height (there is no full-page flag), then crop regions with PIL and feed the crops to `vision_analyze`.
 11. **Mermaid diagram size check:** If the document contains Mermaid diagrams, inject the size-check JS snippet (see `references/mermaid-size-check.md`) into the rendered HTML, re-render in headless Chromium, and extract the JSON report from `#size-report`. Every diagram must return `status: "PASS"`. If any diagram returns `FAIL`, fix the diagram layout (restructure wide chains, adjust wrapper sizing, change flow direction) and re-render until all pass. Common failures: too small (rendered width < 200px), horizontal clipping (scroll overflow), extreme aspect ratio (> 10:1), over-shrunk (scale < 0.3 on a large viewBox).
+12. **Sloptrim de-AI verification:** if the document contains authored prose (step 5 of the build procedure), confirm the sloptrim pre-delivery pass ran and the re-scored `ai_tell_score` is ≤ 25. Verify all enterprise elements (DOC ID, author, sign-off, version history, glossary) and key numbers survived the rewrite. Confirm HTML tag balance is still zero errors after the prose was modified in-place. If the document has no authored prose (pure data/forms), this step is skipped.
 
 ## Pitfalls
 
@@ -321,10 +389,26 @@ Before delivering any HTML version:
 
 9. **HTMLParser void-element false positives in tag-balance check** — the `handle_endtag` callback fires for self-closing void elements written with `/>` syntax (`<meta ... />`, `<img ... />`, `<input ... />`), producing "Unmatched close" errors that are false positives. If the stack is empty after processing all content, the HTML is well-formed. Fix: skip void elements in `handle_endtag` — check `tag not in ('meta','img','input','br','hr','link','area','base','col','embed','source','track','wbr')` before appending an error. Alternatively, treat "Unmatched close" entries for void-element tag names as non-errors when the stack is empty.
 
-10. **Base64 data URI false positives in placeholder scan** — the verification step that greps for `TBD`, `PLACEHOLDER`, `TODO`, etc. will match substrings inside base64-encoded content (logos, embedded images). For example, `xml:space="preserve"` in the SVG logo base64-encodes to a sequence containing `tbd`. Strip `data:[^;]+;base64,[A-Za-z0-9+/=]+` from the document string before running `re.findall` for placeholder tokens — same principle as pitfall 7 (citation-link false positives) and pitfall 8 (Mermaid DOM-grep false positives).
+10. **Placeholder scan false positives from embedded content** — the verification step that greps for `TBD`, `PLACEHOLDER`, `TODO`, etc. matches substrings in three sources: (a) base64-encoded content (logos, embedded images) — `xml:space="preserve"` base64-encodes to a sequence containing `tbd`; (b) the inline Mermaid bundle (see pitfall 8); (c) **Jira status values** in document content — the status `"TO DO"` matches the `TODO` token case-insensitively. Strip `data:[^;]+;base64,[A-Za-z0-9+/=]+` and `<script>` blocks from the document string, and use case-sensitive matching for `TODO` (or exclude known status values) before running `re.findall` for placeholder tokens — same principle as pitfall 7 (citation-link false positives) and pitfall 8 (Mermaid DOM-grep false positives).
 
 11. **`@media print` in dark-themed HTML destroys contrast in weasyprint PDF** — a `@media print { body { background: #fff; color: #000; } .card { background: #f5f5f5; } }` block forces white backgrounds and black text, but does NOT override dark-theme CSS variables (`--text-muted`, `--border`, colored `td.green`/`td.warn`/`td.red` classes). The result: muted text, table borders, and colored cells become invisible on white. Remove the `@media print` block entirely from dark-themed HTML before running weasyprint — the dark theme CSS renders correctly as-is in PDF output.
 
 12. **Chromium OOM with large inline JS bundles** — on constrained VMs (≤4 vCPU / 16 GB), the 3.3 MB inline Mermaid bundle can crash headless Chromium during full-page screenshot rendering with `V8 process OOM (Failed to reserve virtual memory for CodeRange)`. Both Playwright and `chromium-browser --screenshot` fail; `browser_exec` may also fail with `CDP response channel closed`. **Fallback hierarchy:** (a) `chromium-browser --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom 'file://...path...' > /tmp/dom_dump.txt` still works for structural verification (grep for h2 count, `signoff-table`, `gnt-logo`, `role-cell`). (b) For diagram size measurement specifically, launch Chromium with `--remote-debugging-port=9222`, connect via Python `websockets` to the page-level CDP endpoint from `http://localhost:9222/json`, navigate with `Page.navigate`, wait for render, then call `Runtime.evaluate` with a JS snippet that reads `getBoundingClientRect()` on each SVG. This CDP approach handles the 3.3 MB bundle without the OOM that kills Playwright's multi-process model. Do not loop on screenshot retries — switch to DOM-dump or CDP immediately after the first OOM crash.
 
 13. **Mermaid `<pre>` flex-child shrinking** — when `.mermaid-wrapper` uses `display: flex`, the child `<pre class="mermaid">` has no intrinsic width and shrinks to content size (~300px). The SVG's `width: 100%` then resolves against the shrunken pre, producing tiny diagrams despite `useMaxWidth: true`. Fix: set `width: 100% !important` on `.mermaid-wrapper .mermaid`. Do NOT remove `useMaxWidth: true` to compensate — that causes overflow instead. The correct combination is `useMaxWidth: true` (Mermaid config) + `width: 100%` (CSS on pre) + `max-width: 100%` (CSS on SVG).
+
+14. **Angle-bracket placeholders in code/command content** — writing `<prompt>`, `<name>`, `<session>`, `<id>`, `<slug>` literally inside `<code>` or table cells makes the HTMLParser tag-balance check treat them as open tags, failing with confusing `mismatch: expected slug, got code` errors. Entity-escape every placeholder angle bracket at authoring time: `<prompt>`.
+
+15. **Entity injection via execute_code** — when a post-build fix must insert `<`/`>` entities, build them with `chr(38) + 'lt;'` concatenation inside the executed code. Literal `<` strings written into the code payload can arrive pre-normalized, so `str.replace('<prompt>', '<prompt>')` silently no-ops and the tag-balance failure repeats identically. Always print the replacement count and assert it is non-zero.
+
+17. **Vision model false-positive clipping reports**: on tall screenshot crops, vision_analyze can report "clipped" text and columns that aren't actually clipped. Check against the DOM before changing anything. Inject an onload script that writes `scrollWidth` vs `clientWidth` for the page and every `.tw` table wrapper into a `<pre id=probe>`, then `--dump-dom` and grep. Snap Chromium can't read files under `~/.hermes/cache`, so write the probe file to `/root/` and delete it afterwards.
+
+18. **detect.py on raw HTML gives inaccurate scores** — running `detect.py` directly on a `.html` file works but produces inflated character counts and diluted pattern detection because HTML tags, CSS, and attributes are scanned as text. Always extract prose from `<p>`, `<li>`, `<td>` elements first, then run detect.py on the extracted plain text. The raw-HTML score runs ~20-30% lower than the extracted-text score, masking severe AI-slop problems.
+
+19. **detect.py --clean destroys HTML structure** — the `--clean` flag normalizes characters across the entire file including tag attributes, class names, and data URIs. Never run `--clean` on an HTML file. Rewrite prose in-place using `str.replace()` with count assertions, then re-score the extracted text.
+
+20. **Sloptrim rewrite must not change HTML structure** — when replacing AI-slop prose with clean text, use exact string matching on the text content between tags. Never alter tag names, attributes, class names, IDs, or nesting. After every rewrite, run the HTMLParser tag-balance check (Verification Checklist item 1) and verify enterprise elements (DOC ID, sign-off, version history, glossary) are intact. A prose rewrite that breaks HTML structure is a failed delivery, no matter how clean the text scores.
+
+21. **Sloptrim word-count limit applies to prose, not full HTML** — the 1.25x word-count ceiling is measured on extracted prose text, not the HTML file size. The HTML file may shrink (sloptrim cuts prose) or stay similar (CSS/JS/tables unchanged). Measure word count on the extracted text before and after the rewrite.
+
+16. **Full-page screenshot height guessing** — headless Chromium `--screenshot` has no full-page flag; a `--window-size` height larger than the document renders the surplus as blank white. Treat an all-white bottom crop as "window taller than document — shrink and re-render", not a render failure; one or two shrink iterations converge. Also run build scripts with `exec(open(path).read())` — `%run` is IPython magic and raises SyntaxError in the execute_code kernel.
