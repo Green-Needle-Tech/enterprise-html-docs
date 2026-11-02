@@ -34,6 +34,47 @@ description: "Use when creating styled enterprise HTML documents."
 - **Filename = Document ID + version suffix** — the file must be named `<DocumentID>-v<major>_<minor>_<patch>.<ext>`, e.g. `DOC-CR-GE-2026-0828-01-v1_0_0.html` (or `.pdf`/`.docx` matching the format). Do not use descriptive filenames. The version suffix uses underscores (e.g. `v1_0_1`) to stay filesystem-safe on all platforms.
 - **Save location:** all enterprise documents go to `<HOME>/enterprise-document/<PROJECT>/` — a subfolder named after the `PROJECT` field from the Document ID (create the directory if missing). `<HOME>` is `/root` if it exists, otherwise `/home/ubuntu`. Example: `DOC-RES-SMARTROUTER-2026-0829-01-v1_0_0.html` is saved to `<HOME>/enterprise-document/SMARTROUTER/`. The base `enterprise-document/` directory should also be created if missing.
 
+## Frontmatter Header Block (MANDATORY)
+
+Every enterprise document must include a standardized frontmatter header block near the top of the page (either as the right-side header metadata block next to the GNT logo, or as a standalone block directly below the header, above the first content section). **All 7 fields are ALWAYS present — no field may be omitted, reordered, merged, or relabeled.** Earlier documents drifted (ad-hoc class names like `meta`/`doc-meta`/`meta-block`, missing Status or Project, fields crammed into one line); this block is now fixed.
+
+**Canonical sample (exact labels, order, and separators):**
+
+```
+DOC-BA-EAT-2026-1023-01
+Inventory System Revamp Proposal
+Version v1_0_0
+2026-10-23
+Project: GNT-EAT
+Status: Draft — For Review
+Prepared By: GNT-BA
+```
+
+**HTML structure** — always `class="doc-frontmatter"` (never `meta`, `doc-meta`, `meta-block`, or other ad-hoc variants):
+
+```html
+<div class="doc-frontmatter">
+  <div>DOC-BA-EAT-2026-1023-01</div>
+  <div>Inventory System Revamp Proposal</div>
+  <div>Version v1_0_0</div>
+  <div>2026-10-23</div>
+  <div>Project: GNT-EAT</div>
+  <div>Status: Draft — For Review</div>
+  <div>Prepared By: GNT-BA</div>
+</div>
+```
+
+**Field rules:**
+- **Document ID** — the DOC ID `DOC-<TYPE>-<PROJECT>-YYYY-MMDD-NN` (e.g. `DOC-BA-EAT-2026-1023-01`), plain, no label prefix
+- **Title** — the full document title, plain text, no label
+- **Version** — literal prefix `Version ` + underscore format matching the filename suffix (e.g. `Version v1_0_0`)
+- **Date** — ISO format `YYYY-MM-DD` (e.g. `2026-10-23`), no label
+- **Project** — literal label `Project: ` + project code (e.g. `Project: GNT-EAT`)
+- **Status** — literal label `Status: ` + lifecycle status with em dash (e.g. `Status: Draft — For Review`, `Status: Final — Approved`)
+- **Prepared By** — literal label `Prepared By: ` + the resolved author per Naming & Attribution Rules: the author's name (e.g. `Liew Wei Sung`) or a role/team code when the user specifies departmental attribution (e.g. `GNT-BA`). Never an agent name, never blank, never a placeholder.
+
+**Styling:** muted meta text (`var(--muted)`), compact line spacing; the block reads as a clean key list, one field per line. Keep it visible on screen and in print (do not hide in `@media print`).
+
 ## Client-Facing Billing & CR Documents
 
 For Change Requests, effort statements, and other billing-purpose documents:
@@ -275,7 +316,7 @@ Strict SemVer-style versioning applies to HTML documents:
 
 See `references/print-pipeline.md` for the full A4 @page CSS template and weasyprint command.
 
-**Pre-flight enterprise compliance gate (MANDATORY before PDF generation):** Before running weasyprint on any HTML document, verify it has ALL enterprise-required elements: GNT logo (base64-embedded, correct light/dark variant), frontmatter header (DOC ID, author, date, version, status), Approval & Sign-Off section, Glossary, and Version History. If any are missing, add them to the HTML first, then generate the PDF. Generating a PDF without these elements produces a non-compliant deliverable that will be rejected.
+**Pre-flight enterprise compliance gate (MANDATORY before PDF generation):** Before running weasyprint on any HTML document, verify it has ALL enterprise-required elements: GNT logo (base64-embedded, correct light/dark variant), the full 7-field Frontmatter Header Block (see *Frontmatter Header Block* section — Document ID, Title, Version, Date, Project, Status, Prepared By, in that exact order), Approval & Sign-Off section, Glossary, and Version History. If any are missing, add them to the HTML first, then generate the PDF. Generating a PDF without these elements produces a non-compliant deliverable that will be rejected.
 
 **Key steps:**
 1. **Enterprise compliance check** — verify GNT logo, frontmatter, sign-off, glossary, version history are present in the HTML; add any missing elements before proceeding
@@ -363,9 +404,10 @@ Before delivering any HTML version:
 6. **No placeholder text:** Search for `PLACEHOLDER`, `TODO`, `XXX` — none should remain (the `PLACEHOLDER_B64` logo marker must have been replaced)
 7. **File size:** Note the size (base64 logo adds ~48 KB)
 8. **Approval & Sign-Off table:** Confirm the `#approval-signoff` section exists with only the approver roles that are **relevant to the document's actual content** (per the Relevance Filter in the Approval & Sign-Off Footer section — not blindly the full default set from the mapping table). Each row must have all 5 columns (Role, Name, Signature, Remarks, Date) with Name/Signature/Remarks/Date left blank. Verify that every included role's area of ownership appears in the document's content, and that no irrelevant role was included.
-9. **Batch verification:** Run all checks above in a single `execute_code` script — HTMLParser tag-balance pass, regex URL scan, `re.findall` for placeholders, section/reference/logo counts, a grep for `Iris-SPM`, and an **author-attribution resolved check** (grep for placeholder tokens like `AUTHOR_NAME`, `{{author}}`, `TBD`, or an empty `Prepared By` field — the author name must be a concrete resolved value, not a placeholder). Raise on any mismatch. This catches issues a visual pass misses and is faster than running each check separately.
+9. **Batch verification:** Run all checks above in a single `execute_code` script — HTMLParser tag-balance pass, regex URL scan, `re.findall` for placeholders, section/reference/logo counts, a grep for `Iris-SPM`, and an **author-attribution resolved check** (grep for placeholder tokens like `AUTHOR_NAME`, `{{author}}`, `TBD`, or an empty `Prepared By` field — the author name must be a concrete resolved value, not a placeholder). Also run the **frontmatter completeness check**: extract the `doc-frontmatter` block and assert all 7 fields appear in the canonical order — Document ID (matches `DOC-<TYPE>-<PROJECT>-YYYY-MMDD-NN` and matches the filename), Title (non-empty, matches the document title), `Version v<maj>_<min>_<patch>` (matches filename suffix), date in ISO `YYYY-MM-DD` (e.g. `2026-10-23`), `Project: <code>`, `Status: <lifecycle>`, `Prepared By: <resolved name or team code>`. Raise on any missing, empty, or reordered field. This catches issues a visual pass misses and is faster than running each check separately.
 10. **Browser render:** After the script checks pass, render in a real browser (Playwright headless Chromium via `execute_code` if `browser_exec` is unavailable) at 1280px viewport, take a full-page screenshot, and feed to `vision_analyze` for layout/contrast/clipping inspection. Do not claim verification unless a real render completed.
     **Local `file://` render fallback:** cloud-hosted browser tools cannot open local `file://` URLs (blocked as private/internal address). Render locally with system Chromium instead: `chromium-browser --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom 'file://<path>'` for structural checks (grep the DOM dump for h2 count, signoff-table, logo class), and `--screenshot=/root/<name>.png --window-size=1280,<height>` for visual inspection. Write probe HTML and screenshots directly under `/root/` — snap Chromium reads and writes `/root` paths without redirection, so the private-tmp workaround below only applies to `/tmp` targets. Snap-confined Chromium writing to `/tmp/<name>.png` redirects into its private namespace (`/tmp/snap-private-tmp/snap.chromium/tmp/<name>.png`) and may report "Permission denied" at the requested path while succeeding silently — glob the private-tmp path and copy. Capture tall pages by setting an explicit large `--window-size` height (there is no full-page flag), then crop regions with PIL and feed the crops to `vision_analyze`.
+    **Vision-model-unavailable fallback:** if `vision_analyze` itself fails (e.g., OpenRouter guardrail/ZDR routing error), do not block delivery on it — fall back to a programmatic pixel check on the screenshot with PIL: open as RGB, then assert (a) the page is not blank (dark pixel count > 0 across the full frame), (b) the logo region (top-left ~280×50px) contains dark pixels, (c) the accent color pixels are present, and (d) the bottom rows contain dark pixels (footer rendered). A pass on those four probes plus the `--dump-dom` structural greps is a real render verification; state in the delivery summary that visual inspection was programmatic, not model-reviewed.
 11. **Mermaid diagram size check:** If the document contains Mermaid diagrams, inject the size-check JS snippet (see `references/mermaid-size-check.md`) into the rendered HTML, re-render in headless Chromium, and extract the JSON report from `#size-report`. Every diagram must return `status: "PASS"`. If any diagram returns `FAIL`, fix the diagram layout (restructure wide chains, adjust wrapper sizing, change flow direction) and re-render until all pass. Common failures: too small (rendered width < 200px), horizontal clipping (scroll overflow), extreme aspect ratio (> 10:1), over-shrunk (scale < 0.3 on a large viewBox).
 12. **Sloptrim de-AI verification:** if the document contains authored prose (step 5 of the build procedure), confirm the sloptrim pre-delivery pass ran and the re-scored `ai_tell_score` is ≤ 25. Verify all enterprise elements (DOC ID, author, sign-off, version history, glossary) and key numbers survived the rewrite. Confirm HTML tag balance is still zero errors after the prose was modified in-place. If the document has no authored prose (pure data/forms), this step is skipped.
 
