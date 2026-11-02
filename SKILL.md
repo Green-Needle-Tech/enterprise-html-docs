@@ -75,6 +75,46 @@ Prepared By: GNT-BA
 
 **Styling:** muted meta text (`var(--muted)`), compact line spacing; the block reads as a clean key list, one field per line. Keep it visible on screen and in print (do not hide in `@media print`).
 
+## Markdown → Enterprise HTML Conversion (MANDATORY Workflow)
+
+When the source is a Markdown (.md) file, formatting drift is the #1 failure mode: pasted MD fragments break the letterhead flexbox, duplicate the title, leave pipe-delimited tables, and carry over markdown syntax as literal text. **Never convert by rendering the MD and pasting it into a template.** Rebuild the document via the standard New Document Build Procedure and map the MD structure element-by-element using the rules below.
+
+### Letterhead integrity rules (prevent misalignment)
+
+1. **Rebuild the letterhead from scratch** — standard header flex row: GNT logo left + the 7-field `doc-frontmatter` block right (see *Frontmatter Header Block*). Derive the fields from the MD source: Title from the MD `#` H1, DOC ID assigned per Naming & Attribution Rules, Project from the user or filename. Never inherit the MD's own title block, metadata lines, or badges into the header.
+2. **Single-title rule** — the MD H1 becomes the `fm-title` field and the document `<h1>` exactly once. Delete any second title, subtitle line, or metadata line the MD carried at the top (the old double-title/double-letterhead drift).
+3. **Keep the `<h1>` OUT of the header flex row** — the letterhead contains only logo + frontmatter block; the `<h1>` sits below the header with its standard margin. Placing the H1 (or body content) inside the flex row is a primary cause of logo shrink and meta wrap.
+4. **Flex overflow protection** — the frontmatter/meta block gets `min-width: 0; flex: 1` and long titles get `overflow-wrap: anywhere`; the logo keeps `height: 42px; width: auto; flex-shrink: 0`. Without these, a long MD title pushes the logo off-grid or overflows the header.
+5. **Spacing comes from CSS only** — strip consecutive blank lines and `<br>` stacks from the MD source before mapping; vertical rhythm comes from the design system's section margins, never from pasted whitespace. Never carry over MD-style paragraph gaps as empty `<p>&nbsp;</p>` filler.
+
+### Element mapping (MANDATORY — no literal markdown may survive)
+
+| Markdown source | Enterprise HTML target |
+|---|---|
+| `# Title` | `fm-title` + single `<h1>` |
+| `##` / `###` / `####` | `<h2>` / `<h3>` / `<h4>` — h2 with Lucide icon class; strict nesting, no skipped levels |
+| pipe table | `<table>` with standard table style (`th` on `--surface`, row hover) — convert programmatically, never paste pipe text |
+| `> blockquote` | Notion callout (left border, icon, `--surface` background) |
+| fenced code block | `<pre><code>` with JetBrains Mono code style |
+| inline `code` | `<code>` inline style |
+| `**bold**` / `*italic*` | `<strong>` / `<em>` |
+| `-` / `1.` lists | `<ul>` / `<ol>` with standard spacing — no literal `-` bullets |
+| `---` (hr) | `<hr class="divider">` or omit if a section break already follows |
+| `[text](url)` | `<a href>` — external links stay as citations (allowed by self-contained check) |
+
+Heading demotion: if the MD uses `#` for body sections (multiple H1s), demote each to `<h2>`. Top-level content sections are always `<h2>` in the output.
+
+### Complete the enterprise frame
+
+The MD source will NOT contain the enterprise-required sections — the conversion output must still include ALL mandatory elements: 7-field frontmatter block, Approval & Sign-Off table (per type mapping + relevance filter), Glossary, and Version History. Generate these; never deliver a bare converted body.
+
+### Conversion verification (add to the batch script when source is MD)
+
+1. **MD-remnant scan** — strip `<script>`/`<style>` and `<code>`/`<pre>` content (legit markdown samples may live there), then scan text nodes for `**`, `` ` ``, `](`, `^#{1,6} `, and lines matching `\|.*\|.*\|`. Zero matches required — any survivor means a failed mapping.
+2. **Single-title check** — exactly one `<h1>` in the document, and its text matches the `fm-title` field.
+3. **Letterhead alignment render check** — headless-Chromium screenshot at 1280px plus a DOM probe: header flex children bounding boxes do not intersect, logo rendered height ≤ 42px, and header `scrollWidth == clientWidth` (no overflow). A pixel-level logo-region check (dark pixels top-left) is already part of the render fallback — run it for conversions too.
+4. **Frame completeness** — frontmatter block, sign-off, glossary, version history all present (standard enterprise compliance check).
+
 ## Client-Facing Billing & CR Documents
 
 For Change Requests, effort statements, and other billing-purpose documents:
@@ -410,6 +450,8 @@ Before delivering any HTML version:
     **Vision-model-unavailable fallback:** if `vision_analyze` itself fails (e.g., OpenRouter guardrail/ZDR routing error), do not block delivery on it — fall back to a programmatic pixel check on the screenshot with PIL: open as RGB, then assert (a) the page is not blank (dark pixel count > 0 across the full frame), (b) the logo region (top-left ~280×50px) contains dark pixels, (c) the accent color pixels are present, and (d) the bottom rows contain dark pixels (footer rendered). A pass on those four probes plus the `--dump-dom` structural greps is a real render verification; state in the delivery summary that visual inspection was programmatic, not model-reviewed.
 11. **Mermaid diagram size check:** If the document contains Mermaid diagrams, inject the size-check JS snippet (see `references/mermaid-size-check.md`) into the rendered HTML, re-render in headless Chromium, and extract the JSON report from `#size-report`. Every diagram must return `status: "PASS"`. If any diagram returns `FAIL`, fix the diagram layout (restructure wide chains, adjust wrapper sizing, change flow direction) and re-render until all pass. Common failures: too small (rendered width < 200px), horizontal clipping (scroll overflow), extreme aspect ratio (> 10:1), over-shrunk (scale < 0.3 on a large viewBox).
 12. **Sloptrim de-AI verification:** if the document contains authored prose (step 5 of the build procedure), confirm the sloptrim pre-delivery pass ran and the re-scored `ai_tell_score` is ≤ 25. Verify all enterprise elements (DOC ID, author, sign-off, version history, glossary) and key numbers survived the rewrite. Confirm HTML tag balance is still zero errors after the prose was modified in-place. If the document has no authored prose (pure data/forms), this step is skipped.
+
+13. **Markdown-conversion checks (when the source was a .md file):** run the MD-remnant scan, single-title check, and letterhead alignment render check from the *Markdown → Enterprise HTML Conversion* section. Confirm zero surviving markdown syntax in text nodes, exactly one `<h1>` matching the `fm-title`, no header flex overflow, and that the enterprise frame (frontmatter, sign-off, glossary, version history) was completed even though the MD source lacked it. Skip this item for documents not converted from Markdown.
 
 ## Pitfalls
 
